@@ -13,6 +13,27 @@ import { loadFromStorage, saveToStorage, removeFromStorage } from '@/utils/stora
 const USERS_KEY = 'yamal888:users'; // รายชื่อผู้ใช้ที่สมัครไว้ (mock DB)
 const SESSION_KEY = 'yamal888:session'; // ผู้ใช้ที่ล็อกอินอยู่
 
+// บัญชีผู้ดูแลระบบเริ่มต้น (seed) — สำหรับเข้า Admin Dashboard
+const SEED_ADMIN: StoredUser = {
+  id: 'u-admin',
+  name: 'ผู้ดูแลระบบ',
+  email: 'admin@yamal888.com',
+  role: 'admin',
+  password: 'admin1234',
+  createdAt: '2026-01-01T00:00:00.000Z',
+};
+
+function loadUsers(): StoredUser[] {
+  const users = loadFromStorage<StoredUser[]>(USERS_KEY, []);
+  // เติมบัญชี admin ถ้ายังไม่มี
+  if (!users.some((u) => u.email === SEED_ADMIN.email)) {
+    const seeded = [SEED_ADMIN, ...users];
+    saveToStorage(USERS_KEY, seeded);
+    return seeded;
+  }
+  return users;
+}
+
 interface AuthResult {
   ok: boolean;
   error?: string;
@@ -21,6 +42,8 @@ interface AuthResult {
 interface AuthContextValue {
   user: User | null;
   isAuthenticated: boolean;
+  isAdmin: boolean;
+  users: User[]; // สำหรับหน้าจัดการสมาชิก (ตัด password ออก)
   register: (input: {
     name: string;
     email: string;
@@ -43,6 +66,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() =>
     loadFromStorage<User | null>(SESSION_KEY, null),
   );
+  // เก็บสำเนารายชื่อผู้ใช้ไว้ใน state เพื่อให้หน้า admin รีเรนเดอร์เมื่อมีสมาชิกใหม่
+  const [users, setUsers] = useState<User[]>(() => loadUsers().map(stripPassword));
 
   useEffect(() => {
     if (user) saveToStorage(SESSION_KEY, user);
@@ -51,9 +76,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = useCallback<AuthContextValue['register']>((input) => {
     const email = input.email.trim().toLowerCase();
-    const users = loadFromStorage<StoredUser[]>(USERS_KEY, []);
+    const stored = loadUsers();
 
-    if (users.some((u) => u.email === email)) {
+    if (stored.some((u) => u.email === email)) {
       return { ok: false, error: 'อีเมลนี้ถูกใช้สมัครแล้ว' };
     }
 
@@ -62,19 +87,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       name: input.name.trim(),
       email,
       phone: input.phone?.trim() || undefined,
+      role: 'customer',
       password: input.password, // mock เท่านั้น — ระบบจริงต้อง hash ที่ backend
       createdAt: new Date().toISOString(),
     };
 
-    saveToStorage(USERS_KEY, [...users, newUser]);
+    const next = [...stored, newUser];
+    saveToStorage(USERS_KEY, next);
+    setUsers(next.map(stripPassword));
     setUser(stripPassword(newUser)); // สมัครแล้วเข้าสู่ระบบอัตโนมัติ
     return { ok: true };
   }, []);
 
   const login = useCallback<AuthContextValue['login']>((email, password) => {
     const normalized = email.trim().toLowerCase();
-    const users = loadFromStorage<StoredUser[]>(USERS_KEY, []);
-    const found = users.find((u) => u.email === normalized);
+    const stored = loadUsers();
+    const found = stored.find((u) => u.email === normalized);
 
     if (!found || found.password !== password) {
       return { ok: false, error: 'อีเมลหรือรหัสผ่านไม่ถูกต้อง' };
@@ -90,11 +118,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       user,
       isAuthenticated: user !== null,
+      isAdmin: user?.role === 'admin',
+      users,
       register,
       login,
       logout,
     }),
-    [user, register, login, logout],
+    [user, users, register, login, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -1,5 +1,6 @@
 import { Container, Paper, Typography, Stack, Button, Divider, Box, Avatar } from '@mui/material';
-import { useNavigate } from 'react-router-dom';
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 
 function InfoRow({ label, value }: { label: string; value?: string }) {
@@ -57,20 +58,26 @@ export default function AccountPage() {
 
         <Divider sx={{ mb: 2 }} />
 
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          ประวัติการสั่งซื้อและการติดตามสถานะจะเพิ่มในเฟสถัดไป
-        </Typography>
-
-        <Button
-          variant="outlined"
-          color="error"
-          onClick={() => {
-            logout();
-            navigate('/');
-          }}
-        >
-          ออกจากระบบ
-        </Button>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+          <Button
+            variant="contained"
+            component={RouterLink}
+            to="/orders"
+            startIcon={<ReceiptLongIcon />}
+          >
+            ประวัติการสั่งซื้อ
+          </Button>
+          <Button
+            variant="outlined"
+            color="error"
+            onClick={() => {
+              logout();
+              navigate('/');
+            }}
+          >
+            ออกจากระบบ
+          </Button>
+        </Stack>
       </Paper>
     </Container>
   );

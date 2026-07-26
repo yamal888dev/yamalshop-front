@@ -19,10 +19,10 @@ import AddIcon from '@mui/icons-material/Add';
 import RemoveIcon from '@mui/icons-material/Remove';
 import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
 import { Link as RouterLink, useParams, useNavigate } from 'react-router-dom';
-import { getProductBySlug, getProductsByCategory } from '@/data/products';
 import { getCategoryById } from '@/data/categories';
 import { formatBaht, effectivePrice, discountPercent } from '@/utils/format';
 import { useCart } from '@/context/CartContext';
+import { useCatalog } from '@/context/CatalogContext';
 import ProductCard from '@/components/product/ProductCard';
 import Grid from '@mui/material/Grid2';
 
@@ -30,8 +30,9 @@ export default function ProductDetailPage() {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
   const { addItem } = useCart();
+  const { getBySlug, getByCategory } = useCatalog();
 
-  const product = slug ? getProductBySlug(slug) : undefined;
+  const product = slug ? getBySlug(slug) : undefined;
 
   const [activeImage, setActiveImage] = useState(0);
   const [qty, setQty] = useState(1);
@@ -39,10 +40,10 @@ export default function ProductDetailPage() {
 
   const related = useMemo(() => {
     if (!product) return [];
-    return getProductsByCategory(product.categoryId)
+    return getByCategory(product.categoryId)
       .filter((p) => p.id !== product.id)
       .slice(0, 4);
-  }, [product]);
+  }, [product, getByCategory]);
 
   if (!product) {
     return (

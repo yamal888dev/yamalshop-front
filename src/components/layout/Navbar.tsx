@@ -27,7 +27,7 @@ export default function Navbar() {
   const theme = useTheme();
   const navigate = useNavigate();
   const { totalQuantity } = useCart();
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, isAuthenticated, isAdmin, logout } = useAuth();
 
   const [search, setSearch] = useState('');
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -140,6 +140,23 @@ export default function Navbar() {
                 >
                   บัญชีของฉัน
                 </MenuItem>
+                <MenuItem
+                  component={RouterLink}
+                  to="/orders"
+                  onClick={() => setAnchorEl(null)}
+                >
+                  ประวัติการสั่งซื้อ
+                </MenuItem>
+                {isAdmin && (
+                  <MenuItem
+                    component={RouterLink}
+                    to="/admin"
+                    onClick={() => setAnchorEl(null)}
+                  >
+                    แผงควบคุมผู้ดูแล
+                  </MenuItem>
+                )}
+                <Divider />
                 <MenuItem
                   onClick={() => {
                     logout();

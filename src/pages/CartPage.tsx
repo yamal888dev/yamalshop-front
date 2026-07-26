@@ -14,8 +14,9 @@ import AddIcon from '@mui/icons-material/Add';
 import RemoveIcon from '@mui/icons-material/Remove';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { useCart } from '@/context/CartContext';
+import { useAuth } from '@/context/AuthContext';
 import { formatBaht, effectivePrice } from '@/utils/format';
 
 const SHIPPING_FLAT = 40; // ค่าส่งแบบเหมา
@@ -23,6 +24,13 @@ const FREE_SHIPPING_MIN = 1000; // ซื้อครบส่งฟรี
 
 export default function CartPage() {
   const { items, subtotal, totalQuantity, updateQuantity, removeItem, clearCart } = useCart();
+  const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+
+  const goToCheckout = () => {
+    if (isAuthenticated) navigate('/checkout');
+    else navigate('/login', { state: { from: '/checkout' } });
+  };
 
   if (items.length === 0) {
     return (
@@ -193,18 +201,9 @@ export default function CartPage() {
               </Typography>
             </Stack>
 
-            <Button variant="contained" size="large" fullWidth disabled>
+            <Button variant="contained" size="large" fullWidth onClick={goToCheckout}>
               ดำเนินการชำระเงิน
             </Button>
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              display="block"
-              align="center"
-              sx={{ mt: 1 }}
-            >
-              * ระบบชำระเงินจะเพิ่มในเฟสถัดไป
-            </Typography>
 
             <Button
               component={RouterLink}

@@ -12,8 +12,8 @@ import {
 import Grid from '@mui/material/Grid2';
 import SearchIcon from '@mui/icons-material/Search';
 import { useSearchParams } from 'react-router-dom';
-import { products } from '@/data/products';
 import { categories, getCategoryBySlug } from '@/data/categories';
+import { useCatalog } from '@/context/CatalogContext';
 import { effectivePrice } from '@/utils/format';
 import ProductCard from '@/components/product/ProductCard';
 
@@ -27,6 +27,7 @@ const sortOptions: { value: SortKey; label: string }[] = [
 ];
 
 export default function ProductListPage() {
+  const { products } = useCatalog();
   const [params, setParams] = useSearchParams();
   const q = params.get('q') ?? '';
   const categorySlug = params.get('category') ?? '';
@@ -73,7 +74,7 @@ export default function ProductListPage() {
     }
 
     return list;
-  }, [activeCategory, q, sort]);
+  }, [products, activeCategory, q, sort]);
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
