@@ -11,8 +11,7 @@ import {
 } from '@mui/material';
 import Grid from '@mui/material/Grid2';
 import type { Product } from '@/types';
-import { categories } from '@/data/categories';
-import type { ProductInput } from '@/context/CatalogContext';
+import { useCatalog, type ProductInput } from '@/context/CatalogContext';
 
 interface Props {
   open: boolean;
@@ -37,7 +36,7 @@ type FormState = {
 const emptyForm: FormState = {
   name: '',
   brand: '',
-  categoryId: categories[0].id,
+  categoryId: '',
   price: '',
   salePrice: '',
   stock: '',
@@ -47,6 +46,7 @@ const emptyForm: FormState = {
 };
 
 export default function ProductFormDialog({ open, product, onClose, onSubmit }: Props) {
+  const { categories } = useCatalog();
   const [form, setForm] = useState<FormState>(emptyForm);
   const isEdit = Boolean(product);
 
@@ -64,9 +64,10 @@ export default function ProductFormDialog({ open, product, onClose, onSubmit }: 
         tags: product.tags.join(', '),
       });
     } else {
-      setForm(emptyForm);
+      // เพิ่มใหม่ — ตั้งหมวดหมู่เริ่มต้นเป็นตัวแรกที่โหลดมา
+      setForm({ ...emptyForm, categoryId: categories[0]?.id ?? '' });
     }
-  }, [product, open]);
+  }, [product, open, categories]);
 
   const update =
     (key: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement>) =>

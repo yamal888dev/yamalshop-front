@@ -24,12 +24,11 @@ import AddIcon from '@mui/icons-material/Add';
 import RemoveIcon from '@mui/icons-material/Remove';
 import SaveIcon from '@mui/icons-material/Save';
 import { useCatalog } from '@/context/CatalogContext';
-import { getCategoryById } from '@/data/categories';
 
 const LOW_STOCK = 20;
 
 export default function AdminStockPage() {
-  const { products, setStock } = useCatalog();
+  const { products, getCategoryById, setStock } = useCatalog();
   const [drafts, setDrafts] = useState<Record<string, number>>({});
   const [onlyLow, setOnlyLow] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -39,14 +38,18 @@ export default function AdminStockPage() {
   const setDraft = (id: string, v: number) =>
     setDrafts((d) => ({ ...d, [id]: Math.max(0, v) }));
 
-  const save = (id: string, current: number) => {
-    setStock(id, valueOf(id, current));
-    setDrafts((d) => {
-      const next = { ...d };
-      delete next[id];
-      return next;
-    });
-    setSaved(true);
+  const save = async (id: string, current: number) => {
+    try {
+      await setStock(id, valueOf(id, current));
+      setDrafts((d) => {
+        const next = { ...d };
+        delete next[id];
+        return next;
+      });
+      setSaved(true);
+    } catch {
+      /* ถ้าบันทึกไม่สำเร็จ คงค่า draft ไว้ให้ลองใหม่ */
+    }
   };
 
   const list = onlyLow ? products.filter((p) => p.stock <= LOW_STOCK) : products;

@@ -7,11 +7,8 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import type { OrderItem, Product } from '@/types';
-import { products as seedProducts } from '@/data/products';
-import { loadFromStorage, saveToStorage } from '@/utils/storage';
-
-const STORAGE_KEY = 'yamal888:products';
+import type { Category, OrderItem, Product } from '@/types';
+import { apiFetch } from '@/lib/api';
 
 /** ข้อมูลสำหรับสร้าง/แก้ไขสินค้า (ไม่รวม field ที่ระบบกำหนดเอง) */
 export type ProductInput = Omit<
@@ -24,38 +21,54 @@ export type ProductInput = Omit<
 
 interface CatalogContextValue {
   products: Product[];
+  categories: Category[];
+  loading: boolean;
+  error: string | null;
+  refresh: () => Promise<void>;
   getById: (id: string) => Product | undefined;
   getBySlug: (slug: string) => Product | undefined;
   getByCategory: (categoryId: string) => Product[];
+  getCategoryById: (id: string) => Category | undefined;
+  getCategoryBySlug: (slug: string) => Category | undefined;
   featured: (limit?: number) => Product[];
-  addProduct: (input: ProductInput) => Product;
-  updateProduct: (id: string, patch: Partial<ProductInput>) => void;
-  deleteProduct: (id: string) => void;
-  setStock: (id: string, stock: number) => void;
-  /** ตัดสต็อกตามรายการในคำสั่งซื้อ (เรียกตอนสั่งซื้อสำเร็จ) */
+  addProduct: (input: ProductInput) => Promise<Product>;
+  updateProduct: (id: string, patch: Partial<ProductInput>) => Promise<void>;
+  deleteProduct: (id: string) => Promise<void>;
+  setStock: (id: string, stock: number) => Promise<void>;
+  /** ตัดสต็อกในหน่วยความจำแบบ optimistic (ชั่วคราว จนกว่าจะ wire ระบบคำสั่งซื้อ) */
   applyOrderStock: (items: OrderItem[]) => void;
 }
 
 const CatalogContext = createContext<CatalogContextValue | undefined>(undefined);
 
-function slugify(name: string): string {
-  const base = name
-    .trim()
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, '-')
-    .replace(/^-+|-+$/g, '');
-  return `${base || 'item'}-${Math.floor(Math.random() * 9000 + 1000)}`;
-}
-
 export function CatalogProvider({ children }: { children: ReactNode }) {
-  const [products, setProducts] = useState<Product[]>(() =>
-    loadFromStorage<Product[]>(STORAGE_KEY, seedProducts),
-  );
+  const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [productData, categoryData] = await Promise.all([
+        apiFetch<Product[]>('/products'),
+        apiFetch<Category[]>('/categories'),
+      ]);
+      setProducts(productData);
+      setCategories(categoryData);
+      setError(null);
+    } catch {
+      setError('โหลดข้อมูลสินค้าไม่สำเร็จ');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    saveToStorage(STORAGE_KEY, products);
-  }, [products]);
+    void refresh();
+  }, [refresh]);
 
+  // ===== อ่านข้อมูล (คิดจาก state ที่โหลดมาแล้ว) =====
   const getById = useCallback(
     (id: string) => products.find((p) => p.id === id),
     [products],
@@ -72,34 +85,61 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     (limit = 8) => [...products].sort((a, b) => b.rating - a.rating).slice(0, limit),
     [products],
   );
+  const getCategoryById = useCallback(
+    (id: string) => categories.find((c) => c.id === id),
+    [categories],
+  );
+  const getCategoryBySlug = useCallback(
+    (slug: string) => categories.find((c) => c.slug === slug),
+    [categories],
+  );
 
-  const addProduct = useCallback((input: ProductInput) => {
-    const now = new Date();
-    const newProduct: Product = {
-      ...input,
-      id: `p-${Date.now()}`,
-      slug: slugify(input.name),
-      rating: input.rating ?? 5,
-      reviewCount: input.reviewCount ?? 0,
-      createdAt: now.toISOString().slice(0, 10),
-    };
-    setProducts((prev) => [newProduct, ...prev]);
-    return newProduct;
+  // ===== แก้ไขข้อมูล (ยิง API แล้วอัปเดต state) =====
+  const upsertLocal = useCallback((product: Product) => {
+    setProducts((prev) => {
+      const idx = prev.findIndex((p) => p.id === product.id);
+      if (idx === -1) return [product, ...prev];
+      const next = [...prev];
+      next[idx] = product;
+      return next;
+    });
   }, []);
 
-  const updateProduct = useCallback((id: string, patch: Partial<ProductInput>) => {
-    setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
-  }, []);
+  const addProduct = useCallback(
+    async (input: ProductInput) => {
+      const created = await apiFetch<Product>('/products', { method: 'POST', body: input });
+      setProducts((prev) => [created, ...prev]);
+      return created;
+    },
+    [],
+  );
 
-  const deleteProduct = useCallback((id: string) => {
+  const updateProduct = useCallback(
+    async (id: string, patch: Partial<ProductInput>) => {
+      const updated = await apiFetch<Product>(`/products/${id}`, {
+        method: 'PATCH',
+        body: patch,
+      });
+      upsertLocal(updated);
+    },
+    [upsertLocal],
+  );
+
+  const deleteProduct = useCallback(async (id: string) => {
+    await apiFetch<{ success: boolean }>(`/products/${id}`, { method: 'DELETE' });
     setProducts((prev) => prev.filter((p) => p.id !== id));
   }, []);
 
-  const setStock = useCallback((id: string, stock: number) => {
-    setProducts((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, stock: Math.max(0, Math.floor(stock)) } : p)),
-    );
-  }, []);
+  const setStock = useCallback(
+    async (id: string, stock: number) => {
+      const updated = await apiFetch<Product>(`/products/${id}/stock`, {
+        method: 'PATCH',
+        body: { stock: Math.max(0, Math.floor(stock)) },
+      });
+      upsertLocal(updated);
+    },
+    [upsertLocal],
+  );
 
   const applyOrderStock = useCallback((items: OrderItem[]) => {
     setProducts((prev) =>
@@ -114,9 +154,15 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       products,
+      categories,
+      loading,
+      error,
+      refresh,
       getById,
       getBySlug,
       getByCategory,
+      getCategoryById,
+      getCategoryBySlug,
       featured,
       addProduct,
       updateProduct,
@@ -126,9 +172,15 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     }),
     [
       products,
+      categories,
+      loading,
+      error,
+      refresh,
       getById,
       getBySlug,
       getByCategory,
+      getCategoryById,
+      getCategoryBySlug,
       featured,
       addProduct,
       updateProduct,

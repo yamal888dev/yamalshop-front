@@ -14,12 +14,12 @@ import {
   Alert,
   IconButton,
   TextField,
+  CircularProgress,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import RemoveIcon from '@mui/icons-material/Remove';
 import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
 import { Link as RouterLink, useParams, useNavigate } from 'react-router-dom';
-import { getCategoryById } from '@/data/categories';
 import { formatBaht, effectivePrice, discountPercent } from '@/utils/format';
 import { useCart } from '@/context/CartContext';
 import { useCatalog } from '@/context/CatalogContext';
@@ -30,7 +30,7 @@ export default function ProductDetailPage() {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
   const { addItem } = useCart();
-  const { getBySlug, getByCategory } = useCatalog();
+  const { getBySlug, getByCategory, getCategoryById, loading } = useCatalog();
 
   const product = slug ? getBySlug(slug) : undefined;
 
@@ -44,6 +44,15 @@ export default function ProductDetailPage() {
       .filter((p) => p.id !== product.id)
       .slice(0, 4);
   }, [product, getByCategory]);
+
+  // ระหว่างโหลดสินค้าจาก API อย่าเพิ่งแสดง "ไม่พบสินค้า"
+  if (loading && !product) {
+    return (
+      <Container maxWidth="lg" sx={{ py: 10, textAlign: 'center' }}>
+        <CircularProgress />
+      </Container>
+    );
+  }
 
   if (!product) {
     return (

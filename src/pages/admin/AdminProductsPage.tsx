@@ -21,24 +21,28 @@ import {
   DialogActions,
   TextField,
   InputAdornment,
+  CircularProgress,
+  Alert,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SearchIcon from '@mui/icons-material/Search';
 import { useCatalog, type ProductInput } from '@/context/CatalogContext';
-import { getCategoryById } from '@/data/categories';
 import { formatBaht, effectivePrice } from '@/utils/format';
+import { ApiError } from '@/lib/api';
 import type { Product } from '@/types';
 import ProductFormDialog from '@/components/admin/ProductFormDialog';
 
 export default function AdminProductsPage() {
-  const { products, addProduct, updateProduct, deleteProduct } = useCatalog();
+  const { products, loading, getCategoryById, addProduct, updateProduct, deleteProduct } =
+    useCatalog();
 
   const [search, setSearch] = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
+  const [actionError, setActionError] = useState('');
 
   const filtered = products.filter(
     (p) =>
@@ -55,11 +59,28 @@ export default function AdminProductsPage() {
     setFormOpen(true);
   };
 
-  const handleSubmit = (input: ProductInput) => {
-    if (editing) updateProduct(editing.id, input);
-    else addProduct(input);
-    setFormOpen(false);
-    setEditing(null);
+  const handleSubmit = async (input: ProductInput) => {
+    setActionError('');
+    try {
+      if (editing) await updateProduct(editing.id, input);
+      else await addProduct(input);
+      setFormOpen(false);
+      setEditing(null);
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'บันทึกสินค้าไม่สำเร็จ');
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setActionError('');
+    try {
+      await deleteProduct(deleteTarget.id);
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'ลบสินค้าไม่สำเร็จ');
+    } finally {
+      setDeleteTarget(null);
+    }
   };
 
   return (
@@ -93,6 +114,17 @@ export default function AdminProductsPage() {
         }}
       />
 
+      {actionError && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setActionError('')}>
+          {actionError}
+        </Alert>
+      )}
+
+      {loading && products.length === 0 ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+          <CircularProgress />
+        </Box>
+      ) : (
       <TableContainer component={Paper}>
         <Table>
           <TableHead>
@@ -156,6 +188,7 @@ export default function AdminProductsPage() {
           </TableBody>
         </Table>
       </TableContainer>
+      )}
 
       <ProductFormDialog
         open={formOpen}
@@ -177,14 +210,7 @@ export default function AdminProductsPage() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDeleteTarget(null)}>ยกเลิก</Button>
-          <Button
-            color="error"
-            variant="contained"
-            onClick={() => {
-              if (deleteTarget) deleteProduct(deleteTarget.id);
-              setDeleteTarget(null);
-            }}
-          >
+          <Button color="error" variant="contained" onClick={handleDelete}>
             ลบ
           </Button>
         </DialogActions>

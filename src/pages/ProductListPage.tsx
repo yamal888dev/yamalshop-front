@@ -8,11 +8,12 @@ import {
   MenuItem,
   Paper,
   InputAdornment,
+  Box,
+  CircularProgress,
 } from '@mui/material';
 import Grid from '@mui/material/Grid2';
 import SearchIcon from '@mui/icons-material/Search';
 import { useSearchParams } from 'react-router-dom';
-import { categories, getCategoryBySlug } from '@/data/categories';
 import { useCatalog } from '@/context/CatalogContext';
 import { effectivePrice } from '@/utils/format';
 import ProductCard from '@/components/product/ProductCard';
@@ -27,7 +28,7 @@ const sortOptions: { value: SortKey; label: string }[] = [
 ];
 
 export default function ProductListPage() {
-  const { products } = useCatalog();
+  const { products, categories, getCategoryBySlug, loading } = useCatalog();
   const [params, setParams] = useSearchParams();
   const q = params.get('q') ?? '';
   const categorySlug = params.get('category') ?? '';
@@ -142,7 +143,11 @@ export default function ProductListPage() {
         </TextField>
       </Stack>
 
-      {filtered.length === 0 ? (
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+          <CircularProgress />
+        </Box>
+      ) : filtered.length === 0 ? (
         <Paper variant="outlined" sx={{ p: 6, textAlign: 'center' }}>
           <Typography variant="h6" gutterBottom>
             ไม่พบสินค้าที่ตรงกับเงื่อนไข

@@ -2,12 +2,11 @@ import { Box, Container, Typography, Button, Paper, Stack } from '@mui/material'
 import Grid from '@mui/material/Grid2';
 import { Link as RouterLink } from 'react-router-dom';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
-import { categories } from '@/data/categories';
 import { useCatalog } from '@/context/CatalogContext';
 import ProductCard from '@/components/product/ProductCard';
 
 export default function HomePage() {
-  const { featured: getFeatured } = useCatalog();
+  const { featured: getFeatured, categories } = useCatalog();
   const featured = getFeatured(8);
 
   return (
