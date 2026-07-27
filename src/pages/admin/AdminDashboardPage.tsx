@@ -8,8 +8,8 @@ import PaidIcon from '@mui/icons-material/Paid';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import { Link as RouterLink } from 'react-router-dom';
 import { useCatalog } from '@/context/CatalogContext';
-import { useOrders } from '@/context/OrderContext';
-import { apiFetch } from '@/lib/api';
+import { ordersApi, type OrderStats } from '@/lib/orders';
+import type { Order } from '@/types';
 import { formatBaht } from '@/utils/format';
 import { orderStatusLabel, orderStatusColor, formatDateTime } from '@/utils/order';
 
@@ -58,36 +58,33 @@ function StatCard({
 
 export default function AdminDashboardPage() {
   const { products } = useCatalog();
-  const { orders } = useOrders();
 
-  // จำนวนลูกค้าดึงจาก API (ระบบสมาชิกต่อ backend แล้ว)
-  const [customerCount, setCustomerCount] = useState(0);
+  const [stats, setStats] = useState<OrderStats | null>(null);
+  const [recentOrders, setRecentOrders] = useState<Order[]>([]);
+
   useEffect(() => {
     let active = true;
-    apiFetch<{ role: string }[]>('/users')
-      .then((list) => {
-        if (active) setCustomerCount(list.filter((u) => u.role === 'customer').length);
+    Promise.all([ordersApi.stats(), ordersApi.all()])
+      .then(([s, all]) => {
+        if (!active) return;
+        setStats(s);
+        setRecentOrders(all.slice(0, 5));
       })
       .catch(() => {
-        /* ปล่อยเป็น 0 ถ้าโหลดไม่ได้ */
+        /* แสดงค่าเริ่มต้นถ้าโหลดไม่ได้ */
       });
     return () => {
       active = false;
     };
   }, []);
 
-  const revenue = orders
-    .filter((o) => o.status !== 'cancelled' && o.status !== 'pending_payment')
-    .reduce((sum, o) => sum + o.total, 0);
-
-  const pendingCount = orders.filter(
-    (o) => o.status === 'awaiting_verification' || o.status === 'pending_payment',
-  ).length;
+  const revenue = stats?.revenue ?? 0;
+  const orderCount = stats?.orderCount ?? 0;
+  const productCount = stats?.productCount ?? products.length;
+  const customerCount = stats?.customerCount ?? 0;
+  const pendingCount = stats?.pendingCount ?? 0;
 
   const lowStock = products.filter((p) => p.stock <= LOW_STOCK);
-  const recentOrders = [...orders]
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .slice(0, 5);
 
   return (
     <Box>
@@ -108,7 +105,7 @@ export default function AdminDashboardPage() {
           <StatCard
             icon={<ReceiptLongIcon />}
             label="คำสั่งซื้อทั้งหมด"
-            value={`${orders.length}`}
+            value={`${orderCount}`}
             color="#5b2be0"
           />
         </Grid>
@@ -116,7 +113,7 @@ export default function AdminDashboardPage() {
           <StatCard
             icon={<Inventory2Icon />}
             label="สินค้าในระบบ"
-            value={`${products.length}`}
+            value={`${productCount}`}
             color="#ff7a00"
           />
         </Grid>

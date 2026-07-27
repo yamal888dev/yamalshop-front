@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Box,
   Typography,
@@ -20,10 +20,13 @@ import {
   DialogActions,
   Divider,
   Badge,
+  CircularProgress,
+  Alert,
 } from '@mui/material';
 import VerifiedIcon from '@mui/icons-material/Verified';
 import ReportProblemIcon from '@mui/icons-material/ReportProblem';
-import { useOrders } from '@/context/OrderContext';
+import { ordersApi } from '@/lib/orders';
+import { ApiError } from '@/lib/api';
 import { formatBaht } from '@/utils/format';
 import {
   orderStatusLabel,
@@ -45,19 +48,40 @@ const statusFilters: { value: OrderStatus | 'all'; label: string }[] = [
 ];
 
 export default function AdminOrdersPage() {
-  const { orders, getById, updateStatus, resolveIssue } = useOrders();
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [filter, setFilter] = useState<OrderStatus | 'all'>('all');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Order | null>(null);
 
-  const filtered = useMemo(
-    () =>
-      [...orders]
-        .filter((o) => filter === 'all' || o.status === filter)
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-    [orders, filter],
-  );
+  const loadOrders = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await ordersApi.all(filter);
+      setOrders(data);
+      setError('');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'โหลดคำสั่งซื้อไม่สำเร็จ');
+    } finally {
+      setLoading(false);
+    }
+  }, [filter]);
 
-  const selected = selectedId ? getById(selectedId) : undefined;
+  useEffect(() => {
+    void loadOrders();
+  }, [loadOrders]);
+
+  // อัปเดตสถานะ/ปิดปัญหา แล้วอัปเดตทั้ง dialog และตาราง
+  const handleStatus = async (status: OrderStatus, note?: string) => {
+    if (!selected) return;
+    setSelected(await ordersApi.updateStatus(selected.id, status, note));
+    void loadOrders();
+  };
+  const handleResolveIssue = async (issueId: string) => {
+    if (!selected) return;
+    setSelected(await ordersApi.resolveIssue(selected.id, issueId));
+    void loadOrders();
+  };
 
   const openIssues = (o: Order) => o.issues.filter((i) => i.status === 'open').length;
 
@@ -82,6 +106,17 @@ export default function AdminOrdersPage() {
         ))}
       </TextField>
 
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
+
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+          <CircularProgress />
+        </Box>
+      ) : (
       <TableContainer component={Paper}>
         <Table>
           <TableHead>
@@ -96,7 +131,7 @@ export default function AdminOrdersPage() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {filtered.map((o) => (
+            {orders.map((o) => (
               <TableRow key={o.id} hover>
                 <TableCell>
                   <Stack direction="row" spacing={1} alignItems="center">
@@ -122,13 +157,13 @@ export default function AdminOrdersPage() {
                   />
                 </TableCell>
                 <TableCell align="right">
-                  <Button size="small" onClick={() => setSelectedId(o.id)}>
+                  <Button size="small" onClick={() => setSelected(o)}>
                     รายละเอียด
                   </Button>
                 </TableCell>
               </TableRow>
             ))}
-            {filtered.length === 0 && (
+            {orders.length === 0 && (
               <TableRow>
                 <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
                   <Typography variant="body2" color="text.secondary">
@@ -140,11 +175,12 @@ export default function AdminOrdersPage() {
           </TableBody>
         </Table>
       </TableContainer>
+      )}
 
       {/* Dialog รายละเอียด + จัดการสถานะ */}
       <Dialog
         open={Boolean(selected)}
-        onClose={() => setSelectedId(null)}
+        onClose={() => setSelected(null)}
         fullWidth
         maxWidth="md"
       >
@@ -189,7 +225,7 @@ export default function AdminOrdersPage() {
                           </Typography>
                         </Box>
                         {iss.status === 'open' ? (
-                          <Button size="small" onClick={() => resolveIssue(selected.id, iss.id)}>
+                          <Button size="small" onClick={() => handleResolveIssue(iss.id)}>
                             ทำเครื่องหมายแก้ไขแล้ว
                           </Button>
                         ) : (
@@ -246,43 +282,33 @@ export default function AdminOrdersPage() {
                   variant="contained"
                   color="success"
                   startIcon={<VerifiedIcon />}
-                  onClick={() => updateStatus(selected.id, 'paid', 'แอดมินยืนยันการชำระเงิน')}
+                  onClick={() => handleStatus('paid', 'แอดมินยืนยันการชำระเงิน')}
                 >
                   ยืนยันการชำระเงิน
                 </Button>
               )}
               {selected.status === 'paid' && (
-                <Button
-                  variant="contained"
-                  onClick={() => updateStatus(selected.id, 'preparing')}
-                >
+                <Button variant="contained" onClick={() => handleStatus('preparing')}>
                   เริ่มจัดเตรียมสินค้า
                 </Button>
               )}
               {selected.status === 'preparing' && (
-                <Button variant="contained" onClick={() => updateStatus(selected.id, 'shipped')}>
+                <Button variant="contained" onClick={() => handleStatus('shipped')}>
                   ทำเครื่องหมายจัดส่งแล้ว
                 </Button>
               )}
               {selected.status === 'shipped' && (
-                <Button
-                  variant="contained"
-                  color="success"
-                  onClick={() => updateStatus(selected.id, 'completed')}
-                >
+                <Button variant="contained" color="success" onClick={() => handleStatus('completed')}>
                   ทำเครื่องหมายสำเร็จ
                 </Button>
               )}
               {!['completed', 'cancelled'].includes(selected.status) && (
-                <Button
-                  color="error"
-                  onClick={() => updateStatus(selected.id, 'cancelled', 'ยกเลิกโดยแอดมิน')}
-                >
+                <Button color="error" onClick={() => handleStatus('cancelled', 'ยกเลิกโดยแอดมิน')}>
                   ยกเลิกคำสั่งซื้อ
                 </Button>
               )}
               <Box sx={{ flexGrow: 1 }} />
-              <Button onClick={() => setSelectedId(null)}>ปิด</Button>
+              <Button onClick={() => setSelected(null)}>ปิด</Button>
             </DialogActions>
           </>
         )}

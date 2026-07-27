@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import {
   Container,
   Typography,
@@ -21,11 +21,12 @@ import Grid from '@mui/material/Grid2';
 import { useNavigate } from 'react-router-dom';
 import { useCart } from '@/context/CartContext';
 import { useAuth } from '@/context/AuthContext';
-import { useOrders } from '@/context/OrderContext';
 import { useCatalog } from '@/context/CatalogContext';
+import { ordersApi } from '@/lib/orders';
+import { ApiError } from '@/lib/api';
 import { formatBaht, effectivePrice } from '@/utils/format';
 import { paymentMethodLabel } from '@/utils/order';
-import type { OrderItem, OrderStatus, PaymentMethod, ShippingAddress } from '@/types';
+import type { PaymentMethod, ShippingAddress } from '@/types';
 
 const SHIPPING_FLAT = 40;
 const FREE_SHIPPING_MIN = 1000;
@@ -41,8 +42,7 @@ export default function CheckoutPage() {
   const navigate = useNavigate();
   const { items, subtotal, clearCart } = useCart();
   const { user } = useAuth();
-  const { createOrder } = useOrders();
-  const { applyOrderStock } = useCatalog();
+  const { refresh: refreshCatalog } = useCatalog();
 
   const [address, setAddress] = useState<ShippingAddress>({
     fullName: user?.name ?? '',
@@ -54,6 +54,7 @@ export default function CheckoutPage() {
   });
   const [method, setMethod] = useState<PaymentMethod>('credit_card');
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const shipping = subtotal >= FREE_SHIPPING_MIN ? 0 : SHIPPING_FLAT;
   const total = subtotal + shipping;
@@ -61,19 +62,6 @@ export default function CheckoutPage() {
   const update =
     (key: keyof ShippingAddress) => (e: React.ChangeEvent<HTMLInputElement>) =>
       setAddress((a) => ({ ...a, [key]: e.target.value }));
-
-  const orderItems: OrderItem[] = useMemo(
-    () =>
-      items.map((it) => ({
-        productId: it.product.id,
-        slug: it.product.slug,
-        name: it.product.name,
-        image: it.product.images[0],
-        price: effectivePrice(it.product),
-        quantity: it.quantity,
-      })),
-    [items],
-  );
 
   if (items.length === 0) {
     return (
@@ -88,7 +76,7 @@ export default function CheckoutPage() {
     );
   }
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -97,25 +85,21 @@ export default function CheckoutPage() {
       return;
     }
 
-    // กำหนดสถานะเริ่มต้นตามช่องทางชำระเงิน
-    const initialStatus: OrderStatus =
-      method === 'credit_card' ? 'paid' : method === 'cod' ? 'preparing' : 'pending_payment';
-
-    const order = createOrder({
-      userId: user!.id,
-      customerName: user!.name,
-      items: orderItems,
-      subtotal,
-      shippingFee: shipping,
-      total,
-      paymentMethod: method,
-      shippingAddress: address,
-      initialStatus,
-    });
-
-    applyOrderStock(orderItems); // ตัดสต็อก
-    clearCart();
-    navigate(`/orders/${order.id}?new=1`);
+    setSubmitting(true);
+    try {
+      // ส่งแค่ productId + quantity — server คิดราคา/ตัดสต็อก/กำหนดสถานะเอง
+      const order = await ordersApi.create({
+        items: items.map((it) => ({ productId: it.product.id, quantity: it.quantity })),
+        paymentMethod: method,
+        shippingAddress: address,
+      });
+      clearCart();
+      await refreshCatalog(); // ดึงสต็อกล่าสุด (server ตัดไปแล้ว)
+      navigate(`/orders/${order.id}?new=1`);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'สั่งซื้อไม่สำเร็จ');
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -288,8 +272,14 @@ export default function CheckoutPage() {
                 </Alert>
               )}
 
-              <Button type="submit" variant="contained" size="large" fullWidth>
-                ยืนยันคำสั่งซื้อ
+              <Button
+                type="submit"
+                variant="contained"
+                size="large"
+                fullWidth
+                disabled={submitting}
+              >
+                {submitting ? 'กำลังสั่งซื้อ…' : 'ยืนยันคำสั่งซื้อ'}
               </Button>
             </Paper>
           </Grid>

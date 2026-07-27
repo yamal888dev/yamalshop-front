@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import {
   Container,
   Typography,
@@ -7,24 +8,55 @@ import {
   Chip,
   Button,
   Divider,
+  CircularProgress,
+  Alert,
 } from '@mui/material';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import { Link as RouterLink } from 'react-router-dom';
-import { useAuth } from '@/context/AuthContext';
-import { useOrders } from '@/context/OrderContext';
+import { ordersApi } from '@/lib/orders';
+import { ApiError } from '@/lib/api';
+import type { Order } from '@/types';
 import { formatBaht } from '@/utils/format';
 import { orderStatusLabel, orderStatusColor, formatDateTime } from '@/utils/order';
 
 export default function OrdersPage() {
-  const { user } = useAuth();
-  const { getByUser } = useOrders();
-  const orders = user ? getByUser(user.id) : [];
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    ordersApi
+      .mine()
+      .then((data) => active && setOrders(data))
+      .catch((err) =>
+        active && setError(err instanceof ApiError ? err.message : 'โหลดข้อมูลไม่สำเร็จ'),
+      )
+      .finally(() => active && setLoading(false));
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   return (
     <Container maxWidth="md" sx={{ py: 4 }}>
       <Typography variant="h4" gutterBottom>
         ประวัติการสั่งซื้อ
       </Typography>
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
 
       {orders.length === 0 ? (
         <Paper variant="outlined" sx={{ p: 6, textAlign: 'center' }}>

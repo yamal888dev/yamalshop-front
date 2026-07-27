@@ -14,7 +14,6 @@ import theme from '@/theme';
 import { CartProvider } from '@/context/CartContext';
 import { AuthProvider } from '@/context/AuthContext';
 import { CatalogProvider } from '@/context/CatalogContext';
-import { OrderProvider } from '@/context/OrderContext';
 import App from '@/App';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -24,11 +23,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <BrowserRouter>
         <AuthProvider>
           <CatalogProvider>
-            <OrderProvider>
-              <CartProvider>
-                <App />
-              </CartProvider>
-            </OrderProvider>
+            <CartProvider>
+              <App />
+            </CartProvider>
           </CatalogProvider>
         </AuthProvider>
       </BrowserRouter>

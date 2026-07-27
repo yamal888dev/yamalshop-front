@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Container,
   Typography,
@@ -18,14 +18,15 @@ import {
   List,
   ListItem,
   ListItemText,
+  CircularProgress,
 } from '@mui/material';
 import QrCode2Icon from '@mui/icons-material/QrCode2';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ReportProblemIcon from '@mui/icons-material/ReportProblem';
 import Grid from '@mui/material/Grid2';
 import { Link as RouterLink, useParams, useSearchParams } from 'react-router-dom';
-import { useOrders } from '@/context/OrderContext';
-import { useAuth } from '@/context/AuthContext';
+import { ordersApi } from '@/lib/orders';
+import type { Order } from '@/types';
 import { formatBaht } from '@/utils/format';
 import {
   orderStatusLabel,
@@ -48,16 +49,35 @@ export default function OrderDetailPage() {
   const [params] = useSearchParams();
   const isNew = params.get('new') === '1';
 
-  const { getById, markSlipUploaded, updateStatus, addIssue } = useOrders();
-  const { user } = useAuth();
+  const [order, setOrder] = useState<Order | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const [issueOpen, setIssueOpen] = useState(false);
   const [topic, setTopic] = useState(issueTopics[0]);
   const [detail, setDetail] = useState('');
 
-  const order = id ? getById(id) : undefined;
+  useEffect(() => {
+    if (!id) return;
+    let active = true;
+    ordersApi
+      .get(id)
+      .then((o) => active && setOrder(o))
+      .catch(() => active && setOrder(null))
+      .finally(() => active && setLoading(false));
+    return () => {
+      active = false;
+    };
+  }, [id]);
 
-  if (!order || (user && order.userId !== user.id)) {
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (!order) {
     return (
       <Container maxWidth="sm" sx={{ py: 8, textAlign: 'center' }}>
         <Typography variant="h5" gutterBottom>
@@ -73,9 +93,18 @@ export default function OrderDetailPage() {
   const needsPayment = order.status === 'pending_payment';
   const canConfirmReceived = order.status === 'shipped';
 
-  const submitIssue = () => {
+  const markSlipUploaded = async () => {
+    setOrder(await ordersApi.pay(order.id));
+  };
+
+  const confirmReceived = async () => {
+    setOrder(await ordersApi.confirmReceived(order.id));
+  };
+
+  const submitIssue = async () => {
     if (!detail.trim()) return;
-    addIssue(order.id, topic, detail.trim());
+    const updated = await ordersApi.addIssue(order.id, topic, detail.trim());
+    setOrder(updated);
     setDetail('');
     setIssueOpen(false);
   };
@@ -156,7 +185,7 @@ export default function OrderDetailPage() {
             </Box>
           )}
 
-          <Button variant="contained" onClick={() => markSlipUploaded(order.id)} sx={{ mt: 1 }}>
+          <Button variant="contained" onClick={markSlipUploaded} sx={{ mt: 1 }}>
             แจ้งชำระเงิน / แนบสลิป (จำลอง)
           </Button>
           <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 1 }}>
@@ -295,7 +324,7 @@ export default function OrderDetailPage() {
               fullWidth
               sx={{ mt: 3 }}
               startIcon={<CheckCircleIcon />}
-              onClick={() => updateStatus(order.id, 'completed', 'ลูกค้ายืนยันรับสินค้า')}
+              onClick={confirmReceived}
             >
               ได้รับสินค้าแล้ว
             </Button>

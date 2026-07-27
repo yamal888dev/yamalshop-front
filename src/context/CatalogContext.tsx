@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import type { Category, OrderItem, Product } from '@/types';
+import type { Category, Product } from '@/types';
 import { apiFetch } from '@/lib/api';
 
 /** ข้อมูลสำหรับสร้าง/แก้ไขสินค้า (ไม่รวม field ที่ระบบกำหนดเอง) */
@@ -35,8 +35,6 @@ interface CatalogContextValue {
   updateProduct: (id: string, patch: Partial<ProductInput>) => Promise<void>;
   deleteProduct: (id: string) => Promise<void>;
   setStock: (id: string, stock: number) => Promise<void>;
-  /** ตัดสต็อกในหน่วยความจำแบบ optimistic (ชั่วคราว จนกว่าจะ wire ระบบคำสั่งซื้อ) */
-  applyOrderStock: (items: OrderItem[]) => void;
 }
 
 const CatalogContext = createContext<CatalogContextValue | undefined>(undefined);
@@ -141,16 +139,6 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     [upsertLocal],
   );
 
-  const applyOrderStock = useCallback((items: OrderItem[]) => {
-    setProducts((prev) =>
-      prev.map((p) => {
-        const line = items.find((it) => it.productId === p.id);
-        if (!line) return p;
-        return { ...p, stock: Math.max(0, p.stock - line.quantity) };
-      }),
-    );
-  }, []);
-
   const value = useMemo(
     () => ({
       products,
@@ -168,7 +156,6 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       updateProduct,
       deleteProduct,
       setStock,
-      applyOrderStock,
     }),
     [
       products,
@@ -186,7 +173,6 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       updateProduct,
       deleteProduct,
       setStock,
-      applyOrderStock,
     ],
   );
 
