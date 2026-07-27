@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Typography, Paper, Box, Stack, Chip, Button, Divider } from '@mui/material';
 import Grid from '@mui/material/Grid2';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
@@ -8,7 +9,7 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import { Link as RouterLink } from 'react-router-dom';
 import { useCatalog } from '@/context/CatalogContext';
 import { useOrders } from '@/context/OrderContext';
-import { useAuth } from '@/context/AuthContext';
+import { apiFetch } from '@/lib/api';
 import { formatBaht } from '@/utils/format';
 import { orderStatusLabel, orderStatusColor, formatDateTime } from '@/utils/order';
 
@@ -58,7 +59,22 @@ function StatCard({
 export default function AdminDashboardPage() {
   const { products } = useCatalog();
   const { orders } = useOrders();
-  const { users } = useAuth();
+
+  // จำนวนลูกค้าดึงจาก API (ระบบสมาชิกต่อ backend แล้ว)
+  const [customerCount, setCustomerCount] = useState(0);
+  useEffect(() => {
+    let active = true;
+    apiFetch<{ role: string }[]>('/users')
+      .then((list) => {
+        if (active) setCustomerCount(list.filter((u) => u.role === 'customer').length);
+      })
+      .catch(() => {
+        /* ปล่อยเป็น 0 ถ้าโหลดไม่ได้ */
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const revenue = orders
     .filter((o) => o.status !== 'cancelled' && o.status !== 'pending_payment')
@@ -69,7 +85,6 @@ export default function AdminDashboardPage() {
   ).length;
 
   const lowStock = products.filter((p) => p.stock <= LOW_STOCK);
-  const customerCount = users.filter((u) => u.role === 'customer').length;
   const recentOrders = [...orders]
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, 5);

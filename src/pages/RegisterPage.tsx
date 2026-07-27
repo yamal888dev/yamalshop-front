@@ -25,12 +25,13 @@ export default function RegisterPage() {
     confirm: '',
   });
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const update =
     (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
       setForm((f) => ({ ...f, [key]: e.target.value }));
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -43,12 +44,14 @@ export default function RegisterPage() {
       return;
     }
 
-    const result = register({
+    setSubmitting(true);
+    const result = await register({
       name: form.name,
       email: form.email,
       phone: form.phone,
       password: form.password,
     });
+    setSubmitting(false);
 
     if (result.ok) {
       navigate('/', { replace: true });
@@ -116,8 +119,14 @@ export default function RegisterPage() {
               fullWidth
               autoComplete="new-password"
             />
-            <Button type="submit" variant="contained" size="large" fullWidth>
-              สมัครสมาชิก
+            <Button
+              type="submit"
+              variant="contained"
+              size="large"
+              fullWidth
+              disabled={submitting}
+            >
+              {submitting ? 'กำลังสมัคร…' : 'สมัครสมาชิก'}
             </Button>
           </Stack>
         </Box>

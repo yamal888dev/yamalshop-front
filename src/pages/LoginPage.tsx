@@ -27,11 +27,14 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
-    const result = login(email, password);
+    setSubmitting(true);
+    const result = await login(email, password);
+    setSubmitting(false);
     if (result.ok) {
       navigate(from, { replace: true });
     } else {
@@ -75,8 +78,14 @@ export default function LoginPage() {
               fullWidth
               autoComplete="current-password"
             />
-            <Button type="submit" variant="contained" size="large" fullWidth>
-              เข้าสู่ระบบ
+            <Button
+              type="submit"
+              variant="contained"
+              size="large"
+              fullWidth
+              disabled={submitting}
+            >
+              {submitting ? 'กำลังเข้าสู่ระบบ…' : 'เข้าสู่ระบบ'}
             </Button>
           </Stack>
         </Box>

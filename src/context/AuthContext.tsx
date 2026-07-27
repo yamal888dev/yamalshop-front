@@ -7,124 +7,104 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import type { StoredUser, User } from '@/types';
-import { loadFromStorage, saveToStorage, removeFromStorage } from '@/utils/storage';
-
-const USERS_KEY = 'yamal888:users'; // รายชื่อผู้ใช้ที่สมัครไว้ (mock DB)
-const SESSION_KEY = 'yamal888:session'; // ผู้ใช้ที่ล็อกอินอยู่
-
-// บัญชีผู้ดูแลระบบเริ่มต้น (seed) — สำหรับเข้า Admin Dashboard
-const SEED_ADMIN: StoredUser = {
-  id: 'u-admin',
-  name: 'ผู้ดูแลระบบ',
-  email: 'admin@yamal888.com',
-  role: 'admin',
-  password: 'admin1234',
-  createdAt: '2026-01-01T00:00:00.000Z',
-};
-
-function loadUsers(): StoredUser[] {
-  const users = loadFromStorage<StoredUser[]>(USERS_KEY, []);
-  // เติมบัญชี admin ถ้ายังไม่มี
-  if (!users.some((u) => u.email === SEED_ADMIN.email)) {
-    const seeded = [SEED_ADMIN, ...users];
-    saveToStorage(USERS_KEY, seeded);
-    return seeded;
-  }
-  return users;
-}
+import type { User } from '@/types';
+import { apiFetch, getToken, setToken, clearToken, ApiError } from '@/lib/api';
 
 interface AuthResult {
   ok: boolean;
   error?: string;
 }
 
+interface AuthResponse {
+  user: User;
+  accessToken: string;
+}
+
 interface AuthContextValue {
   user: User | null;
   isAuthenticated: boolean;
   isAdmin: boolean;
-  users: User[]; // สำหรับหน้าจัดการสมาชิก (ตัด password ออก)
+  /** true ระหว่างกำลังเช็ค token ตอนโหลดแอป — ยังไม่รู้ว่าล็อกอินอยู่ไหม */
+  initializing: boolean;
   register: (input: {
     name: string;
     email: string;
     password: string;
     phone?: string;
-  }) => AuthResult;
-  login: (email: string, password: string) => AuthResult;
+  }) => Promise<AuthResult>;
+  login: (email: string, password: string) => Promise<AuthResult>;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-function stripPassword(u: StoredUser): User {
-  const { password: _pw, ...rest } = u;
-  void _pw;
-  return rest;
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(() =>
-    loadFromStorage<User | null>(SESSION_KEY, null),
-  );
-  // เก็บสำเนารายชื่อผู้ใช้ไว้ใน state เพื่อให้หน้า admin รีเรนเดอร์เมื่อมีสมาชิกใหม่
-  const [users, setUsers] = useState<User[]>(() => loadUsers().map(stripPassword));
+  const [user, setUser] = useState<User | null>(null);
+  const [initializing, setInitializing] = useState<boolean>(() => Boolean(getToken()));
 
+  // ตอนโหลดแอป ถ้ามี token อยู่ ให้ดึงข้อมูลผู้ใช้จาก /auth/me
   useEffect(() => {
-    if (user) saveToStorage(SESSION_KEY, user);
-    else removeFromStorage(SESSION_KEY);
-  }, [user]);
-
-  const register = useCallback<AuthContextValue['register']>((input) => {
-    const email = input.email.trim().toLowerCase();
-    const stored = loadUsers();
-
-    if (stored.some((u) => u.email === email)) {
-      return { ok: false, error: 'อีเมลนี้ถูกใช้สมัครแล้ว' };
+    if (!getToken()) {
+      setInitializing(false);
+      return;
     }
-
-    const newUser: StoredUser = {
-      id: `u-${Date.now()}`,
-      name: input.name.trim(),
-      email,
-      phone: input.phone?.trim() || undefined,
-      role: 'customer',
-      password: input.password, // mock เท่านั้น — ระบบจริงต้อง hash ที่ backend
-      createdAt: new Date().toISOString(),
+    let active = true;
+    (async () => {
+      try {
+        const me = await apiFetch<User>('/auth/me');
+        if (active) setUser(me);
+      } catch {
+        clearToken(); // token หมดอายุ/ไม่ถูกต้อง
+      } finally {
+        if (active) setInitializing(false);
+      }
+    })();
+    return () => {
+      active = false;
     };
-
-    const next = [...stored, newUser];
-    saveToStorage(USERS_KEY, next);
-    setUsers(next.map(stripPassword));
-    setUser(stripPassword(newUser)); // สมัครแล้วเข้าสู่ระบบอัตโนมัติ
-    return { ok: true };
   }, []);
 
-  const login = useCallback<AuthContextValue['login']>((email, password) => {
-    const normalized = email.trim().toLowerCase();
-    const stored = loadUsers();
-    const found = stored.find((u) => u.email === normalized);
+  const handleAuth = useCallback(
+    async (path: string, payload: unknown): Promise<AuthResult> => {
+      try {
+        const res = await apiFetch<AuthResponse>(path, { method: 'POST', body: payload });
+        setToken(res.accessToken);
+        setUser(res.user);
+        return { ok: true };
+      } catch (err) {
+        const error = err instanceof ApiError ? err.message : 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้';
+        return { ok: false, error };
+      }
+    },
+    [],
+  );
 
-    if (!found || found.password !== password) {
-      return { ok: false, error: 'อีเมลหรือรหัสผ่านไม่ถูกต้อง' };
-    }
+  const register = useCallback<AuthContextValue['register']>(
+    (input) => handleAuth('/auth/register', input),
+    [handleAuth],
+  );
 
-    setUser(stripPassword(found));
-    return { ok: true };
+  const login = useCallback<AuthContextValue['login']>(
+    (email, password) => handleAuth('/auth/login', { email, password }),
+    [handleAuth],
+  );
+
+  const logout = useCallback(() => {
+    clearToken();
+    setUser(null);
   }, []);
-
-  const logout = useCallback(() => setUser(null), []);
 
   const value = useMemo(
     () => ({
       user,
       isAuthenticated: user !== null,
       isAdmin: user?.role === 'admin',
-      users,
+      initializing,
       register,
       login,
       logout,
     }),
-    [user, users, register, login, logout],
+    [user, initializing, register, login, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

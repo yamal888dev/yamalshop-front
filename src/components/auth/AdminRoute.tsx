@@ -1,12 +1,20 @@
 import type { ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Container, Typography, Button, Box } from '@mui/material';
+import { Container, Typography, Button, Box, CircularProgress } from '@mui/material';
 import { Link as RouterLink } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 
 /** อนุญาตเฉพาะผู้ใช้ที่ล็อกอินและมีสิทธิ์ admin */
 export default function AdminRoute({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isAdmin } = useAuth();
+  const { isAuthenticated, isAdmin, initializing } = useAuth();
+
+  if (initializing) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: '/admin' }} replace />;
